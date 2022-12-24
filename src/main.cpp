@@ -1,10 +1,11 @@
 #include <Arduino.h>
+void ReceiveSerial();
+void DisplaySerial(); 
 
-uint8_t g_inputChar; // Serial input character
-bool g_newData=false; // Flag to indicate new serial data received
-
-void ShowDataParam(int32_t received_data);
-int32_t ReceiveData();
+constexpr uint8_t g_kBufferSize=32;
+char g_bufferInput[g_kBufferSize] = {0};
+bool g_hasSerialReceived = false;
+bool g_isSerialReceiving = false;
 
 void setup() {
   Serial.begin(115200);
@@ -12,41 +13,49 @@ void setup() {
 }
 
 void loop() {
-  //ReceiveData();
-  //ShowData();
-  ShowDataParam(ReceiveData());
+  ReceiveSerial();
+  DisplaySerial();
 }
 
-int32_t ReceiveData(){
-  if (!Serial.available()) return 0;
-  if (Serial.peek()<'0' || Serial.peek()>'9') {Serial.read(); return 0;}
-  
-  delayMicroseconds(5000);
-  g_newData = true;
-  int32_t received_data = 0;
- 
-  while(Serial.available()){
-    //delayMicroseconds(20000);
-    g_inputChar = Serial.read();
-    if (g_inputChar<'0' || g_inputChar>'9') break;
-    received_data = 10*received_data + g_inputChar - '0';
-    Serial.println(received_data);
+void ReceiveSerial() {
+  static uint8_t buffer_index = 0;
+  static constexpr char kStartMarker = '<';
+  static constexpr char kStopMarker = '>';
+  char received_byte = 0;
+
+  if (!Serial.available()) return;
+  while (Serial.available() && g_hasSerialReceived == false) {
+    received_byte = Serial.read();
+    if (received_byte == kStartMarker && g_isSerialReceiving == false) {
+      g_isSerialReceiving = true;
+      buffer_index = 0;
+      continue;
+    }
+    if (buffer_index >= g_kBufferSize) {
+      buffer_index = g_kBufferSize - 1;
+      g_bufferInput[buffer_index] = '\0';
+      g_hasSerialReceived = true;
+      g_isSerialReceiving = false;
+      buffer_index=0;
+      return;
+    }
+    if (received_byte == kStopMarker && g_isSerialReceiving == true) {
+      g_hasSerialReceived = true;
+      g_isSerialReceiving = false;
+      g_bufferInput[buffer_index] = '\0';
+      buffer_index = 0;
+      return;
+    }
+
+    if (g_isSerialReceiving == false) continue;
+    g_bufferInput[buffer_index] = received_byte;
+    buffer_index++;
   }
-  return received_data;
 }
 
-void ShowData(){
-  if (g_newData) {
-    g_newData = false;
-    Serial.println(g_inputChar-'0'); 
+void DisplaySerial() {
+  if (g_hasSerialReceived) {
+    g_hasSerialReceived = false;
+    Serial.print(g_bufferInput);
   }
 }
-
-void ShowDataParam(int32_t received_data){
-  if (g_newData) {
-    g_newData = false;
-    Serial.print("Show: "); Serial.println(received_data);
-  }
-}
-
-
